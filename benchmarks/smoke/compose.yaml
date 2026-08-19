@@ -1,14 +1,14 @@
 services:
   benchmark:
     build:
-      context: ./docker
+      context: .
       dockerfile: Dockerfile
-    image: coding-agent-benchmark:latest
-    container_name: agent_benchmark
+    image: coding-agent-benchmark-smoke:latest
+    container_name: agent_benchmark_smoke
     volumes:
       - .:/app
     env_file:
-      - path: .env
+      - path: ../../.env
         required: false
     environment:
       - PROMPTFOO_DISABLE_TELEMETRY=true

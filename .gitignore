@@ -13,3 +13,6 @@ $RECYCLE.BIN/
 
 # Nodepad temp
 *.bak
+
+# Secrets (API keys)
+.env

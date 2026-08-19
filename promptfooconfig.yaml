@@ -1,0 +1,12 @@
+description: "Sanity check - Docker & Promptfoo setup"
+
+prompts:
+  - "Say 'Promptfoo is working in Docker!'"
+
+providers:
+  - id: echo
+
+tests:
+  - assert:
+      - type: equals
+        value: "Promptfoo is working in Docker!"

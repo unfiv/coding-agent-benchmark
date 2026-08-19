@@ -1,0 +1,13 @@
+services:
+  benchmark:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: coding-agent-benchmark:latest
+    container_name: agent_benchmark
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      - PROMPTFOO_DISABLE_TELEMETRY=true

@@ -136,8 +136,8 @@ def call_openrouter(messages, model, api_key):
 
 # 4. Основной ReAct-цикл
 def main():
-    # если вдруг по причине ручного сброса процесса репозиторий остался грязным
-    subprocess.run("git -C workspace/googletest checkout . && git -C workspace/googletest clean -fd", shell=True, capture_output=True)
+    # если вдруг по причине ручного сброса процесса репозиторий остался грязным (сохраняем директорию с билдом, чтобы не пересобирать каждый раз)
+    subprocess.run("git -C workspace/googletest checkout . && git -C workspace/googletest clean -fd -e build", shell=True, capture_output=True)
     
     total_prompt_tokens = 0
     total_completion_tokens = 0

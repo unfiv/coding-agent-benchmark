@@ -2,7 +2,7 @@ prompts:
   - file://prompt.txt
 
 providers:
-  - id: exec:python3 run_agent.py
+  - id: exec:python3 run_agent.py --max-steps 4
 
 tests:
   - assert:

@@ -1,0 +1,28 @@
+prompts:
+  - file://prompt.txt
+
+providers:
+  - id: exec:python3 run_agent.py
+
+tests:
+  - assert:
+      - type: javascript
+        value: |
+          const { execSync } = require('child_process');
+          const cwd = 'workspace/googletest';
+          
+          try {
+            execSync('cmake --build workspace/googletest/build && ctest --test-dir workspace/googletest/build --output-on-failure', { encoding: 'utf8' });
+            return true;
+          } catch (err) {
+            const logs = (err.stdout || '') + (err.stderr || '') + err.message;
+            const tail = logs.split('\n').slice(-15).join('\n');
+            console.log("=== BUILD/TEST FAILED ===");
+            console.log(tail);
+            return false;
+          } finally {
+            try {
+              // Флаг -e build/ запрещает Git удалять артефакты сборки
+              execSync(`git -C ${cwd} checkout . && git -C ${cwd} clean -fd -e build`, { stdio: 'ignore' });              
+            } catch (e) {}
+          }

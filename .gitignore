@@ -16,3 +16,6 @@ $RECYCLE.BIN/
 
 # Secrets (API keys)
 .env
+
+# Googletest sources
+/benchmarks/cpp-gtest-fix/workspace/googletest/

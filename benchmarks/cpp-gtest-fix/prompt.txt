@@ -1,0 +1,8 @@
+You are a C++ software engineer. 
+Your target project is located at `./workspace/googletest`.
+
+Fix the overflow issue when comparing large integer types in EXPECT_EQ and ensure `ctest --test-dir workspace/googletest/build` passes.
+
+Rules:
+1. Always use paths relative to the current working directory, starting with `./workspace/googletest/` (e.g., `./workspace/googletest/googletest/src/gtest.cc`).
+2. Inspect the repository, make necessary file modifications, and verify your changes.

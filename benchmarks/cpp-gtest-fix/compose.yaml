@@ -1,0 +1,17 @@
+services:
+  benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: coding-agent-benchmark-cpp:latest
+    container_name: agent_benchmark_cpp
+    volumes:
+      - ../..:/app
+    working_dir: /app/benchmarks/cpp-gtest-fix
+    env_file:
+      - ../../.env        
+    environment:
+      - PROMPTFOO_DISABLE_TELEMETRY=true      
+    entrypoint: []
+    # Идеология одной команды: авто-кэш -> молниеносный сброс диффа -> запуск теста
+    command: bash -c "./setup.sh && ( [ -d workspace/googletest ] && git -C workspace/googletest reset --hard HEAD && git -C workspace/googletest clean -fd ) && promptfoo eval"

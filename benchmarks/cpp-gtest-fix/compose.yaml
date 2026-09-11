@@ -7,6 +7,8 @@ services:
     container_name: agent_benchmark_cpp
     volumes:
       - ../..:/app
+      # Пробрасываем базу promptfoo на хост, чтобы логи не сгорали при --rm
+      - ./logs/promptfoo_data:/root/.promptfoo
     working_dir: /app/benchmarks/cpp-gtest-fix
     env_file:
       - ../../.env        

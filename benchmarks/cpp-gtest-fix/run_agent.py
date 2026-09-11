@@ -5,6 +5,20 @@ import subprocess
 import argparse
 import urllib.request
 import urllib.error
+import logging
+
+# 0. Настройка файлового логирования
+os.makedirs("logs", exist_ok=True)
+logging.basicConfig(
+    filename="logs/agent_execution.log",
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    encoding="utf-8"
+)
+
+def log(msg):
+    sys.stderr.write(f"{msg}\n")
+    logging.info(msg)
 
 # 1. Определение тулов для агента
 TOOLS = [
@@ -73,7 +87,9 @@ TOOLS = [
 def execute_tool(name, args):
     if name == "run_bash":
         res = subprocess.run(args["command"], shell=True, capture_output=True, text=True)
-        return f"STDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}\nEXIT_CODE: {res.returncode}"
+        stdout = res.stdout[-1500:] if len(res.stdout) > 1500 else res.stdout
+        stderr = res.stderr[-1500:] if len(res.stderr) > 1500 else res.stderr
+        return f"STDOUT (tail):\n{stdout}\nSTDERR (tail):\n{stderr}\nEXIT_CODE: {res.returncode}"
     
     elif name == "read_file":
         try:
@@ -128,10 +144,10 @@ def call_openrouter(messages, model, api_key):
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8")
-        sys.stderr.write(f"OpenRouter HTTP Error: {e.code} {error_body}\n")
+        log(f"OpenRouter HTTP Error: {e.code} {error_body}")
         raise RuntimeError(f"OpenRouter API HTTP {e.code}: {error_body}")
     except Exception as e:
-        sys.stderr.write(f"OpenRouter Connection Error: {str(e)}\n")
+        log(f"OpenRouter Connection Error: {str(e)}")
         raise RuntimeError(f"OpenRouter Connection Error: {str(e)}")
 
 # 4. Основной ReAct-цикл
@@ -168,6 +184,8 @@ def main():
 
         api_key = os.environ.get("OPENROUTER_API_KEY", "")
 
+        log(f"=== Starting Agent Run (max_steps={args.max_steps}, model={args.model}) ===")
+
         messages = [
             {
                 "role": "system", 
@@ -181,7 +199,7 @@ def main():
         ]
 
         for step in range(args.max_steps):
-            sys.stderr.write(f"--- ReAct Step {step + 1}/{args.max_steps} ---\n")
+            log(f"--- ReAct Step {step + 1}/{args.max_steps} ---")
             res = call_openrouter(messages, args.model, api_key)
 
             usage = res.get("usage", {})
@@ -198,13 +216,16 @@ def main():
             messages.append(msg)
 
             if not msg.get("tool_calls"):
+                log("Agent finished task without further tool calls.")
                 break
 
             for tool_call in msg["tool_calls"]:
                 fn_name = tool_call["function"]["name"]
                 fn_args = json.loads(tool_call["function"]["arguments"])
-                sys.stderr.write(f"Executing tool: {fn_name}\n")
+                log(f"Executing tool: {fn_name} with args: {json.dumps(fn_args)}")
+                
                 tool_output = execute_tool(fn_name, fn_args)
+                log(f"Tool [{fn_name}] Output Tail:\n{tool_output[-300:]}")
 
                 messages.append({
                     "role": "tool",
@@ -223,7 +244,7 @@ def main():
             final_text = "Task finished without a final text message."
 
     except Exception as e:
-        sys.stderr.write(f"Agent failed with exception: {str(e)}\n")
+        log(f"Agent failed with exception: {str(e)}")
         final_text = f"Agent failed with error: {str(e)}"
 
     output_data = {
@@ -236,6 +257,7 @@ def main():
         "cost": round(total_cost, 6)
     }
 
+    log(f"=== Execution Finished. Total Cost: ${total_cost:.6f} ===")
     print(json.dumps(output_data))
     sys.exit(0)
 

@@ -12,8 +12,9 @@ mkdir -p ./workspace
 # Initialize target repository (Fetch from GitHub or fallback to local copy)
 if [ ! -d "$TARGET_DIR" ]; then
     echo "Initializing GoogleTest target repository..."
-    if git clone --depth 1 --branch v1.14.0 $REPO_URL $TARGET_DIR 2>/dev/null; then
+    if git clone $REPO_URL $TARGET_DIR 2>/dev/null; then
         echo "Successfully fetched GoogleTest from GitHub."
+        git -C $TARGET_DIR checkout $COMMIT_SHA
     else
         echo "Network unavailable. Falling back to local offline copy from $LOCAL_FALLBACK..."
         cp -r $LOCAL_FALLBACK $TARGET_DIR

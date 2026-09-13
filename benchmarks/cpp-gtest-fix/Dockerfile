@@ -16,4 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 3. Прибиваем гвоздями точную версию Promptfoo (без @latest)
 RUN npm install -g promptfoo@0.122.0 && npm cache clean --force
 
+# 4. Ставим Claude Code CLI (нативный curl-инсталлятор 403-ит внутри Docker-сборок
+# из-за Cloudflare-челленджа — anthropics/claude-code#36306, npm — рабочий воркэраунд)
+RUN npm install -g @anthropic-ai/claude-code@2.1.269 && npm cache clean --force
+
 WORKDIR /app

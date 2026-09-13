@@ -2,7 +2,7 @@ prompts:
   - file://prompt.txt
 
 providers:
-  - id: exec:python3 run_agent.py --max-steps 4
+  - id: exec:python3 run_claude_code.py
 
 tests:
   - assert:
@@ -10,19 +10,26 @@ tests:
         value: |
           const { execSync } = require('child_process');
           const cwd = 'workspace/googletest';
-          
+          const run = (cmd) => execSync(cmd, { encoding: 'utf8' });
+
           try {
-            execSync('cmake --build workspace/googletest/build && ctest --test-dir workspace/googletest/build --output-on-failure', { encoding: 'utf8' });
+            run(`cmake --build ${cwd}/build`);
+
+            run(
+              `g++ -std=c++17 -I ${cwd}/googletest/include -I ${cwd}/googletest ` +
+              `checks/overflow_regression_test.cc ` +
+              `-L ${cwd}/build/lib -lgtest -lgtest_main -lpthread ` +
+              `-o /tmp/overflow_regression_test`
+            );
+            run('/tmp/overflow_regression_test');
+
+            run(`ctest --test-dir ${cwd}/build --output-on-failure`);
+
             return true;
           } catch (err) {
-            const logs = (err.stdout || '') + (err.stderr || '') + err.message;
-            const tail = logs.split('\n').slice(-15).join('\n');
-            console.log("=== BUILD/TEST FAILED ===");
-            console.log(tail);
+            console.log("=== CHECK FAILED ===");
+            console.log(((err.stdout||'')+(err.stderr||'')+err.message).split('\n').slice(-30).join('\n'));
             return false;
           } finally {
-            try {
-              // Флаг -e build/ запрещает Git удалять артефакты сборки
-              execSync(`git -C ${cwd} checkout . && git -C ${cwd} clean -fd -e build`, { stdio: 'ignore' });              
-            } catch (e) {}
+            try { execSync(`git -C ${cwd} checkout . && git -C ${cwd} clean -fd -e build`, { stdio: 'ignore' }); } catch (e) {}
           }

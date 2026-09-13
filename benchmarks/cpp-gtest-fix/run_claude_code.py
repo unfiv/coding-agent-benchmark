@@ -6,12 +6,23 @@ Wrapper над `claude -p --output-format stream-json --verbose` для promptfo
   - logs/claude_code_transcript.jsonl - КАЖДАЯ событие-строка от Claude Code
     verbatim, одна на строку, ничего не теряется;
   - logs/claude_code_execution.log    - человекочитаемая выжимка по каждому
-    событию (какой тул вызван, с какими аргументами, что вернул) - в том же
-    духе, что и лог вашего собственного ReAct-цикла.
+    событию, плюс полная разбивка cost/usage/модели по итогам сессии.
 
-В stdout уходит РОВНО ОДНА финальная JSON-строка {output, tokenUsage, cost} -
-это то, что ожидает exec:-провайдер promptfoo. Всё остальное - в stderr/файлы,
-чтобы не сломать парсинг на стороне promptfoo.
+В stdout уходит РОВНО ОДНА финальная JSON-строка {output, tokenUsage, cost,
+metadata} - это то, что ожидает exec:-провайдер promptfoo (лишний ключ
+metadata он игнорирует, но полезен для последующего разбора логов).
+
+Проверено на реальном transcript.jsonl (см. чат) - формат событий и имена
+полей ниже подтверждены, а не предположены:
+  - result.total_cost_usd - агрегированная стоимость по ВСЕМ моделям сессии
+  - result.usage.{input_tokens,cache_creation_input_tokens,
+    cache_read_input_tokens,output_tokens} - ЭТО агрегированные суммы по всей
+    сессии (проверено построчным сложением promежуточных usage-блоков);
+    per-message usage-поля у отдельных "assistant"-событий занижены/не
+    репрезентативны - для итоговых цифр использовать только result.usage.
+  - result.modelUsage - разбивка по каждой реально вызванной модели
+    (Claude Code может дёргать доп. модель, например haiku, для служебных
+    подзадач - это не баг парсинга, а реальное поведение).
 """
 import sys
 import os
@@ -52,9 +63,9 @@ def read_prompt():
 
 
 def summarize_event(evt):
-    """Компактная человекочитаемая строка для одного событие stream-json.
-    Формы событий у Claude Code различаются между версиями CLI - здесь
-    защитный best-effort разбор, не исчерпывающий список типов."""
+    """Компактная человекочитаемая строка для одного события stream-json.
+    Ветки assistant/user (tool_use, tool_result) и result подтверждены на
+    реальном transcript.jsonl."""
     etype = evt.get("type", "?")
     subtype = evt.get("subtype")
 
@@ -82,7 +93,7 @@ def summarize_event(evt):
         return f"[retry] attempt={evt.get('attempt')} status={evt.get('error_status')} reason={evt.get('error')}"
 
     if etype == "result":
-        return f"[result] subtype={subtype} is_error={evt.get('is_error')}"
+        return f"[result] subtype={subtype} is_error={evt.get('is_error')} num_turns={evt.get('num_turns')}"
 
     return f"[{etype}/{subtype}] {json.dumps(evt)[:200]}"
 
@@ -127,14 +138,28 @@ def main():
     if stderr_tail:
         log(f"stderr tail:\n{stderr_tail[-5000:]}")
 
-    # Поле со стоимостью переименовывали между версиями CLI (встречались и
-    # cost_usd, и total_cost_usd) - проверяю оба, чтобы не тихо получить 0.
     cost = final_result_evt.get(
         "total_cost_usd", final_result_evt.get("cost_usd", 0.0)
     )
+
+    # result.usage - агрегат по всей сессии (подтверждено на реальных
+    # данных: cache_creation_input_tokens там равен сумме по всем
+    # отдельным API-вызовам сессии, а не последнему из них).
     usage = final_result_evt.get("usage", {}) or {}
-    prompt_tokens = usage.get("input_tokens", 0)
+    fresh_input = usage.get("input_tokens", 0)
+    cache_write = usage.get("cache_creation_input_tokens", 0)
+    cache_read = usage.get("cache_read_input_tokens", 0)
     completion_tokens = usage.get("output_tokens", 0)
+    # "prompt" = весь входной контекст, а не только некэшированный остаток -
+    # иначе cost и tokenUsage будут расходиться на порядки при активном кеше.
+    prompt_tokens = fresh_input + cache_write + cache_read
+
+    # Разбивка по моделям - Claude Code может тихо звать доп. модель
+    # (например haiku) на служебные подзадачи помимо основной.
+    model_usage = final_result_evt.get("modelUsage", {}) or {}
+    per_model_cost = {
+        model: stats.get("costUSD", 0.0) for model, stats in model_usage.items()
+    }
 
     output_data = {
         "output": final_result_evt.get("result", ""),
@@ -144,12 +169,27 @@ def main():
             "total": prompt_tokens + completion_tokens,
         },
         "cost": round(cost, 6),
+        "metadata": {
+            "num_turns": final_result_evt.get("num_turns"),
+            "duration_ms": final_result_evt.get("duration_ms"),
+            "duration_api_ms": final_result_evt.get("duration_api_ms"),
+            "is_error": final_result_evt.get("is_error"),
+            "terminal_reason": final_result_evt.get("terminal_reason"),
+            "permission_denials": final_result_evt.get("permission_denials"),
+            "cache_write_tokens": cache_write,
+            "cache_read_tokens": cache_read,
+            "fresh_input_tokens": fresh_input,
+            "per_model_cost_usd": per_model_cost,
+        },
     }
 
     log(
-        f"=== Execution Finished. Cost: ${output_data['cost']:.6f}, "
-        f"num_turns={final_result_evt.get('num_turns')}, "
-        f"duration_ms={final_result_evt.get('duration_ms')} ==="
+        f"=== Execution Finished. Cost: ${output_data['cost']:.6f} "
+        f"(models: {per_model_cost}), num_turns={final_result_evt.get('num_turns')}, "
+        f"duration_ms={final_result_evt.get('duration_ms')}, "
+        f"tokens prompt={prompt_tokens} (fresh={fresh_input}, "
+        f"cache_write={cache_write}, cache_read={cache_read}) "
+        f"completion={completion_tokens} ==="
     )
     print(json.dumps(output_data))
     sys.exit(0)

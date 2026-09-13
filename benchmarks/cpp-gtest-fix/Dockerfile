@@ -21,3 +21,8 @@ RUN npm install -g promptfoo@0.122.0 && npm cache clean --force
 RUN npm install -g @anthropic-ai/claude-code@2.1.269 && npm cache clean --force
 
 WORKDIR /app
+
+# 5. --dangerously-skip-permissions у Claude Code жёстко запрещён под root -
+# переключаемся на непривилегированного пользователя, который уже есть в
+# официальном node-образе (см. https://github.com/nodejs/docker-node/blob/main/docs/BestPractices.md)
+USER node

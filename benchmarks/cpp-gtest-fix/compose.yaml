@@ -8,7 +8,7 @@ services:
     volumes:
       - ../..:/app
       # Пробрасываем базу promptfoo на хост, чтобы логи не сгорали при --rm
-      - ./logs/promptfoo_data:/root/.promptfoo
+      - ./logs/promptfoo_data:/home/node/.promptfoo   # было /root/.promptfoo, но перешли на безопасного пользователя node (в частности требование запуска claude cli)
     working_dir: /app/benchmarks/cpp-gtest-fix
     env_file:
       - ../../.env        

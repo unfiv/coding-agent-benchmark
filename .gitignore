@@ -19,3 +19,6 @@ $RECYCLE.BIN/
 
 # Googletest sources
 /benchmarks/cpp-gtest-fix/workspace/googletest/
+.aider*
+benchmarks/cpp-gtest-fix/logs
+*.exe

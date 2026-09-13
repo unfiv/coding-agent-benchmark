@@ -1,35 +1,19 @@
 prompts:
   - file://prompt.txt
 
+#providers:
+#  - id: file://run_claude_code.py
+#    config:
+#      timeoutMs: 1800000
 providers:
   - id: exec:python3 run_claude_code.py
 
+
+evaluateOptions:
+  maxConcurrency: 1
+  timeoutMs: 1800000
+
 tests:
   - assert:
-      - type: javascript
-        value: |
-          const { execSync } = require('child_process');
-          const cwd = 'workspace/googletest';
-          const run = (cmd) => execSync(cmd, { encoding: 'utf8' });
-
-          try {
-            run(`cmake --build ${cwd}/build`);
-
-            run(
-              `g++ -std=c++17 -I ${cwd}/googletest/include -I ${cwd}/googletest ` +
-              `checks/overflow_regression_test.cc ` +
-              `-L ${cwd}/build/lib -lgtest -lgtest_main -lpthread ` +
-              `-o /tmp/overflow_regression_test`
-            );
-            run('/tmp/overflow_regression_test');
-
-            run(`ctest --test-dir ${cwd}/build --output-on-failure`);
-
-            return true;
-          } catch (err) {
-            console.log("=== CHECK FAILED ===");
-            console.log(((err.stdout||'')+(err.stderr||'')+err.message).split('\n').slice(-30).join('\n'));
-            return false;
-          } finally {
-            try { execSync(`git -C ${cwd} checkout . && git -C ${cwd} clean -fd -e build`, { stdio: 'ignore' }); } catch (e) {}
-          }
+      - type: python
+        value: file://checks/verify.py

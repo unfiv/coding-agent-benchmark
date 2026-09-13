@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
 """
-Wrapper над `claude -p --output-format stream-json --verbose` для promptfoo.
+Provider для promptfoo поверх `claude -p --output-format stream-json --verbose`.
+
+ВАЖНО: подключается как file://run_claude_code.py в promptfoo (Python-провайдер),
+а НЕ как exec:python3 run_claude_code.py. Причина задокументирована прямо в
+доках promptfoo (custom-script, "Structured provider responses"): exec:-провайдер
+ВСЕГДА берёт весь stdout как сырую строку для `output`, даже если скрипт
+печатает JSON - tokenUsage/cost из него так извлечь нельзя в принципе. Python-
+провайдер вызывает call_api() в процессе и берёт возвращённый dict как есть.
 
 Пишет максимально подробный лог (аналог agent_execution.log из run_agent.py):
-  - logs/claude_code_transcript.jsonl - КАЖДАЯ событие-строка от Claude Code
-    verbatim, одна на строку, ничего не теряется;
+  - logs/claude_code_transcript.jsonl - КАЖДАЯ строка-событие от Claude Code
+    verbatim, одна на строку;
   - logs/claude_code_execution.log    - человекочитаемая выжимка по каждому
     событию, плюс полная разбивка cost/usage/модели по итогам сессии.
-
-В stdout уходит РОВНО ОДНА финальная JSON-строка {output, tokenUsage, cost,
-metadata} - это то, что ожидает exec:-провайдер promptfoo (лишний ключ
-metadata он игнорирует, но полезен для последующего разбора логов).
 
 Проверено на реальном transcript.jsonl (см. чат) - формат событий и имена
 полей ниже подтверждены, а не предположены:
   - result.total_cost_usd - агрегированная стоимость по ВСЕМ моделям сессии
   - result.usage.{input_tokens,cache_creation_input_tokens,
     cache_read_input_tokens,output_tokens} - ЭТО агрегированные суммы по всей
-    сессии (проверено построчным сложением promежуточных usage-блоков);
+    сессии (проверено построчным сложением промежуточных usage-блоков);
     per-message usage-поля у отдельных "assistant"-событий занижены/не
     репрезентативны - для итоговых цифр использовать только result.usage.
   - result.modelUsage - разбивка по каждой реально вызванной модели
@@ -43,23 +46,6 @@ TRANSCRIPT_PATH = "logs/claude_code_transcript.jsonl"
 def log(msg):
     sys.stderr.write(f"{msg}\n")
     logging.info(msg)
-
-
-def read_prompt():
-    prompt_text = ""
-    if not sys.stdin.isatty():
-        raw_stdin = sys.stdin.read().strip()
-        if raw_stdin:
-            try:
-                data = json.loads(raw_stdin)
-                prompt_text = data.get("prompt", raw_stdin)
-            except json.JSONDecodeError:
-                prompt_text = raw_stdin
-    if not prompt_text and len(sys.argv) > 1:
-        prompt_text = " ".join(sys.argv[1:]).strip()
-    if not prompt_text:
-        prompt_text = "Fix the task"
-    return prompt_text
 
 
 def summarize_event(evt):
@@ -98,12 +84,25 @@ def summarize_event(evt):
     return f"[{etype}/{subtype}] {json.dumps(evt)[:200]}"
 
 
-def main():
-    prompt_text = read_prompt()
+def run_claude(prompt_text):
+    """Общая логика: запуск claude, потоковое логирование, извлечение
+    итоговых метрик. Используется и call_api() (реальный путь через
+    promptfoo), и __main__ (ручные смоук-тесты)."""
     log("=== Starting Claude Code headless run (stream-json) ===")
+
+    # Модель переключается через CLAUDE_MODEL в .env, без пересборки образа.
+    # По умолчанию - Sonnet 5 (заметно дешевле Opus, но всё ещё способен
+    # реально чинить код, а не только гонять тулы). Для чистой отладки
+    # пайплайна (без ставки на качество фикса) поставьте
+    # claude-haiku-4-5-20251001 - в 5 раз дешевле Opus по всем категориям
+    # (вход/выход/кэш-запись/кэш-чтение) равномерно. Для финального
+    # "боевого" сравнения моделей - claude-opus-5.
+    model_name = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
+    log(f"Using model: {model_name}")
 
     cmd = [
         "claude", "-p", prompt_text,
+        "--model", model_name,
         "--output-format", "stream-json",
         "--verbose",
         "--dangerously-skip-permissions",
@@ -126,7 +125,7 @@ def main():
             try:
                 evt = json.loads(line)
             except json.JSONDecodeError:
-                log(f"[unparsed line] {line[:5000]}")
+                log(f"[unparsed line] {line[:200]}")
                 continue
             log(summarize_event(evt))
             if evt.get("type") == "result":
@@ -136,26 +135,19 @@ def main():
 
     log(f"Claude Code exit code: {returncode}")
     if stderr_tail:
-        log(f"stderr tail:\n{stderr_tail[-5000:]}")
+        log(f"stderr tail:\n{stderr_tail[-1000:]}")
 
     cost = final_result_evt.get(
         "total_cost_usd", final_result_evt.get("cost_usd", 0.0)
     )
 
-    # result.usage - агрегат по всей сессии (подтверждено на реальных
-    # данных: cache_creation_input_tokens там равен сумме по всем
-    # отдельным API-вызовам сессии, а не последнему из них).
     usage = final_result_evt.get("usage", {}) or {}
     fresh_input = usage.get("input_tokens", 0)
     cache_write = usage.get("cache_creation_input_tokens", 0)
     cache_read = usage.get("cache_read_input_tokens", 0)
     completion_tokens = usage.get("output_tokens", 0)
-    # "prompt" = весь входной контекст, а не только некэшированный остаток -
-    # иначе cost и tokenUsage будут расходиться на порядки при активном кеше.
     prompt_tokens = fresh_input + cache_write + cache_read
 
-    # Разбивка по моделям - Claude Code может тихо звать доп. модель
-    # (например haiku) на служебные подзадачи помимо основной.
     model_usage = final_result_evt.get("modelUsage", {}) or {}
     per_model_cost = {
         model: stats.get("costUSD", 0.0) for model, stats in model_usage.items()
@@ -191,9 +183,35 @@ def main():
         f"cache_write={cache_write}, cache_read={cache_read}) "
         f"completion={completion_tokens} ==="
     )
-    print(json.dumps(output_data))
-    sys.exit(0)
+    return output_data
+
+
+def call_api(prompt, options, context):
+    """Точка входа для promptfoo Python-провайдера
+    (providers: - file://run_claude_code.py в promptfooconfig.yaml).
+    prompt/options/context уже десериализованы promptfoo - никакого
+    ручного разбора stdin/argv не нужно."""
+    return run_claude(prompt)
 
 
 if __name__ == "__main__":
-    main()
+    # Ручной режим для смоук-тестов из терминала:
+    #   echo 'list files' | python3 run_claude_code.py
+    # (promptfoo этот путь больше не использует - см. call_api() выше)
+    prompt_text = ""
+    if not sys.stdin.isatty():
+        raw_stdin = sys.stdin.read().strip()
+        if raw_stdin:
+            try:
+                data = json.loads(raw_stdin)
+                prompt_text = data.get("prompt", raw_stdin)
+            except json.JSONDecodeError:
+                prompt_text = raw_stdin
+    if not prompt_text and len(sys.argv) > 1:
+        prompt_text = " ".join(sys.argv[1:]).strip()
+    if not prompt_text:
+        prompt_text = "Fix the task"
+
+    result = run_claude(prompt_text)
+    print(json.dumps(result))
+    sys.exit(0)

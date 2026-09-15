@@ -107,6 +107,16 @@ def run_claude(prompt_text):
         "--verbose",
         "--dangerously-skip-permissions",
         "--allowedTools", "Read,Edit,Bash",
+        # Двойная страховка от зацикливания - независимая от того, какая
+        # модель выбрана. Дёшево за токен не значит дёшево по факту, если
+        # модель начнёт перебирать одинаково неудачные фиксы по кругу.
+        # --max-turns: жёсткий потолок на число ходов агента.
+        # --max-budget-usd: жёсткий $ потолок именно на ЭТОТ прогон (это
+        # ОЦЕНКА Claude Code по своим токенам, а не серверная проверка
+        # биллинга Anthropic - лимит workspace в Console остаётся главным,
+        # это лишь дополнительный, более быстрый предохранитель).
+        "--max-turns", os.environ.get("CLAUDE_MAX_TURNS", "40"),
+        "--max-budget-usd", os.environ.get("CLAUDE_MAX_BUDGET_USD", "2.00"),
     ]
     if os.environ.get("MCP_CONFIG_PATH"):
         cmd += ["--mcp-config", os.environ["MCP_CONFIG_PATH"]]

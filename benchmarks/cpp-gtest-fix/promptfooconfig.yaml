@@ -1,13 +1,10 @@
 prompts:
   - file://prompt.txt
 
-#providers:
-#  - id: file://run_claude_code.py
-#    config:
-#      timeoutMs: 1800000
 providers:
   - id: exec:python3 run_claude_code.py
-
+    config:
+      timeoutMs: 1800000
 
 evaluateOptions:
   maxConcurrency: 1
@@ -16,4 +13,4 @@ evaluateOptions:
 tests:
   - assert:
       - type: python
-        value: file://checks/verify.py
+        value: file://verify.py

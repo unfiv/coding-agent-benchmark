@@ -187,31 +187,56 @@ def run_claude(prompt_text):
 
 
 def call_api(prompt, options, context):
-    """Точка входа для promptfoo Python-провайдера
-    (providers: - file://run_claude_code.py в promptfooconfig.yaml).
-    prompt/options/context уже десериализованы promptfoo - никакого
-    ручного разбора stdin/argv не нужно."""
+    """Точка входа для promptfoo Python file://-провайдера. СЕЙЧАС НЕ
+    ИСПОЛЬЗУЕТСЯ (providers: указывает на exec:python3 run_claude_code.py) -
+    Python worker pool promptfoo убивает вызов на 300000ms независимо от
+    config.timeoutMs и версии (проверено на 0.122.0 и 0.123.0 дешёвым
+    sleep-тестом, без единого обращения к Claude). Оставлено на случай,
+    если promptfoo в будущем это починит - тогда достаточно вернуть
+    providers обратно на file://run_claude_code.py."""
     return run_claude(prompt)
 
 
+def _append_metrics_jsonl(output_data):
+    """Свой собственный machine-readable журнал метрик - независимый от
+    того, что покажет таблица promptfoo (exec:-провайдер всегда пихает
+    весь stdout как сырую строку в output, structured cost/tokenUsage
+    оттуда не достаёт в принципе - см. обсуждение в чате)."""
+    import time as _time
+    record = dict(output_data)
+    record["timestamp"] = _time.strftime("%Y-%m-%dT%H:%M:%S")
+    try:
+        with open("logs/metrics.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception as e:
+        log(f"Failed to append metrics.jsonl: {e}")
+
+
 if __name__ == "__main__":
-    # Ручной режим для смоук-тестов из терминала:
-    #   echo 'list files' | python3 run_claude_code.py
-    # (promptfoo этот путь больше не использует - см. call_api() выше)
-    prompt_text = ""
-    if not sys.stdin.isatty():
-        raw_stdin = sys.stdin.read().strip()
-        if raw_stdin:
-            try:
-                data = json.loads(raw_stdin)
-                prompt_text = data.get("prompt", raw_stdin)
-            except json.JSONDecodeError:
-                prompt_text = raw_stdin
-    if not prompt_text and len(sys.argv) > 1:
-        prompt_text = " ".join(sys.argv[1:]).strip()
-    if not prompt_text:
-        prompt_text = "Fix the task"
+    # exec:-провайдер promptfoo вызывает скрипт с промптом как ОТДЕЛЬНЫМ
+    # позиционным аргументом argv[1] (см. docs: "Your script receives
+    # three arguments: 1. prompt, 2. options (JSON), 3. context (JSON)").
+    # ВАЖНО: раньше тут было " ".join(sys.argv[1:]) - это склеило бы
+    # промпт с JSON'ами options/context из argv[2]/argv[3] и испортило
+    # бы его. argv[1] нужно брать как есть, без join.
+    if len(sys.argv) > 1:
+        prompt_text = sys.argv[1]
+    else:
+        # Ручной режим для смоук-тестов из терминала:
+        #   echo 'list files' | python3 run_claude_code.py
+        prompt_text = ""
+        if not sys.stdin.isatty():
+            raw_stdin = sys.stdin.read().strip()
+            if raw_stdin:
+                try:
+                    data = json.loads(raw_stdin)
+                    prompt_text = data.get("prompt", raw_stdin)
+                except json.JSONDecodeError:
+                    prompt_text = raw_stdin
+        if not prompt_text:
+            prompt_text = "Fix the task"
 
     result = run_claude(prompt_text)
+    _append_metrics_jsonl(result)
     print(json.dumps(result))
     sys.exit(0)

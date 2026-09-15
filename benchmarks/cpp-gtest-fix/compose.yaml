@@ -17,4 +17,4 @@ services:
       - PROMPTFOO_PYTHON=python3
     entrypoint: []
     # Идеология одной команды: авто-кэш (сохранение директории сборки, чтобы не пересобирать каждый раз заново) -> молниеносный сброс диффа -> запуск теста
-    command: bash -c "./setup.sh && ( [ -d workspace/googletest ] && git -C workspace/googletest reset --hard HEAD && git -C workspace/googletest clean -fd -e build ) && promptfoo eval"
+    command: bash -c "./setup.sh && ( [ -d workspace/googletest ] && git -C workspace/googletest reset --hard HEAD && git -C workspace/googletest clean -fd -e build ) && promptfoo eval --no-cache"

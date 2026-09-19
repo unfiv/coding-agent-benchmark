@@ -1,0 +1,2 @@
+Create the file workspace/hello.txt containing exactly one line: OK-42
+Do nothing else.

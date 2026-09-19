@@ -1,0 +1,29 @@
+services:
+  benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: coding-agent-benchmark-smoke:latest
+    container_name: agent_benchmark_smoke
+    volumes:
+      # Наружу смонтирован ТОЛЬКО каталог этого теста, а не весь репозиторий:
+      # агент запускается с --dangerously-skip-permissions и может стереть
+      # или переписать всё, что видит. Корень репо (.git, .env, соседние
+      # тесты, незакоммиченная работа) в контейнер не попадает.
+      - .:/work
+      # Пробрасываем базу promptfoo на хост, чтобы логи не сгорали при --rm
+      - ./logs/promptfoo_data:/home/node/.promptfoo
+    working_dir: /work
+    env_file:
+      - ../../.env
+    environment:
+      - PROMPTFOO_DISABLE_TELEMETRY=true
+      - PROMPTFOO_PYTHON=python3
+    entrypoint: []
+    # Сборки нет, setup.sh не нужен. Перед стартом чистим workspace и старый
+    # results.json (иначе при падении eval отчёт показал бы чужой прогон).
+    # Между eval и отчётом стоит ";", а не "&&": promptfoo, насколько я знаю,
+    # выходит с кодом 100, если хоть один ассерт не прошёл, и с "&&" отчёт
+    # не запустился бы именно тогда, когда он нужнее всего. Код возврата
+    # контейнера - это код bench_report.py.
+    command: bash -c "mkdir -p workspace logs && rm -f workspace/hello.txt logs/results.json && promptfoo eval --no-cache -o logs/results.json; python3 bench_report.py logs/results.json"

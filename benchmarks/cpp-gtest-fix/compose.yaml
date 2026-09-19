@@ -21,4 +21,4 @@ services:
     # label/config в promptfooconfig.yaml) - здесь ничего под это не меняется,
     # только -o кладёт структурированный результат, и bench_report.py его
     # сводит в консоль после таблицы promptfoo.
-    command: bash -c "./setup.sh && ( [ -d workspace/googletest ] && git -C workspace/googletest reset --hard HEAD && git -C workspace/googletest clean -fd -e build ) && promptfoo eval --no-cache -o logs/results.json && python3 bench_report.py logs/results.json"
+    command: bash -c "rm -f logs/results.json; ./setup.sh && ( [ -d workspace/googletest ] && git -C workspace/googletest reset --hard HEAD && git -C workspace/googletest clean -fd -e build ) && promptfoo eval --no-cache -o logs/results.json; python3 bench_report.py logs/results.json"

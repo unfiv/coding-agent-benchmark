@@ -1,6 +1,7 @@
 prompts:
   - file://prompt.txt
 
+# Comparison of two models
 providers:
   - id: exec:python3 run_claude_code.py
     label: claude-sonnet-5
@@ -8,7 +9,6 @@ providers:
       model: claude-sonnet-5
       maxTurns: 80
       maxBudgetUsd: 2.00
-  # добавить модель для сравнения - просто ещё одна запись:
   - id: exec:python3 run_claude_code.py
     label: claude-opus-5
     config:

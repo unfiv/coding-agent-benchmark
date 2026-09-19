@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-Итоговая точка эксперимента: сводка в консоль + logs/summary.{json,md}.
+Final stage of the experiment: console summary + logs/summary.{json,md}.
 
-Зачем отдельным шагом: exec:-провайдер promptfoo запускается новым процессом
-на каждый тест-кейс, поэтому агрегирующая сводка обязана идти ПОСЛЕ
-`promptfoo eval`. Сравнение моделей делает сам promptfoo (несколько записей
-в providers: с разными label/config в promptfooconfig.yaml) - этот скрипт
-просто читает его результат и добавляет то, что exec:-провайдер физически
-не может отдать promptfoo структурно: cost/tokens/причину остановки.
+Why a separate step: promptfoo's exec: provider spawns a new process for
+every test case, so the aggregate summary has to run AFTER `promptfoo eval`.
+promptfoo itself compares the models (multiple entries under providers: with
+different label/config in promptfooconfig.yaml) - this script just reads its
+result and adds what the exec: provider physically cannot hand back to
+promptfoo in structured form: cost/tokens/termination reason.
 
-Единственный вход - JSON, который `promptfoo eval -o <path>` уже написал.
-Каждая строка результата содержит response.output - это ровно тот JSON,
-который наш run_claude_code.py напечатал в stdout, включая metadata.label
-для группировки. Отдельный metrics.jsonl НЕ читается - он лишь durability-
-копия на диске, отчёту не нужна, пока results.json на месте.
+The only input is the JSON that `promptfoo eval -o <path>` already wrote.
+Each result row contains response.output - exactly the JSON our
+run_claude_code.py printed to stdout, including metadata.label for grouping.
+A separate metrics.jsonl is NOT read - it's only a durability copy on disk,
+not needed by the report as long as results.json is present.
 
-Использование:
+Usage:
     python3 bench_report.py                      # logs/results.json
     python3 bench_report.py logs/results.json
     python3 bench_report.py logs/results.json --baseline claude-sonnet-5
@@ -30,14 +30,14 @@ STEP_LIMIT = "STEP_LIMIT"
 BUDGET_EXCEEDED = "BUDGET_EXCEEDED"
 PROVIDER_ERROR = "PROVIDER_ERROR"
 HARNESS_ERROR = "HARNESS_ERROR"
-TASK_FAILED = "TASK_FAILED"  # агент закончил сам, но verify.py не прошёл
+TASK_FAILED = "TASK_FAILED"  # agent finished on its own, but verify.py failed
 
 LIMIT_REASONS = (STEP_LIMIT, BUDGET_EXCEEDED)
 ERROR_REASONS = (PROVIDER_ERROR, HARNESS_ERROR)
 
 EXIT_OK, EXIT_TASK_FAILED, EXIT_BUDGET, EXIT_STEPS, EXIT_PROVIDER, EXIT_HARNESS = range(6)
 
-# Выше этой доли незавершённых прогонов сравнение моделей недостоверно.
+# Above this fraction of incomplete runs, comparing models is not reliable.
 INCOMPLETE_UNRELIABLE = 0.20
 W = 72
 
@@ -79,9 +79,9 @@ def load_rows(path):
         reason = grading.get("reason") or pf.get("error") or ""
 
         if not meta:
-            # response.output не распарсился как наш JSON - провайдер упал
-            # раньше, чем успел его напечатать. Это харнесс-ошибка, а не
-            # проваленная задача.
+            # response.output didn't parse as our JSON - the provider crashed
+            # before it managed to print it. This is a harness error, not a
+            # failed task.
             termination = HARNESS_ERROR
             label = "unknown"
         else:
@@ -207,11 +207,12 @@ def print_model_block(label, rows, agg):
     if agg["wall_avg_ms"]:
         wall_line = f" wall        avg {fmt_ms(agg['wall_avg_ms'])}   max {fmt_ms(agg['wall_max_ms'])}"
         if agg["multi_episode"]:
-            # Claude Code может уводить долгую bash-команду в background и
-            # "просыпаться" по уведомлению - несколько type:result в одном
-            # вызове. num_turns/wall тут суммированы по всем эпизодам, но
-            # если что-то в отчёте не сходится - смотреть transcript целиком,
-            # а не последний result внутри него.
+            # Claude Code can push a long-running bash command to the
+            # background and "wake up" on a notification - multiple
+            # type:result events in a single call. num_turns/wall here are
+            # summed across all episodes, but if something in the report
+            # doesn't add up, check the full transcript, not just the last
+            # result inside it.
             wall_line += "   " + DIM(f"({agg['multi_episode']}/{agg['n']} runs had background wait/wakeup)")
         print(wall_line)
 

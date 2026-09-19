@@ -1,38 +1,39 @@
 #!/usr/bin/env python3
 """
-Provider для promptfoo поверх `claude -p --output-format stream-json --verbose`.
+Provider for promptfoo on top of `claude -p --output-format stream-json --verbose`.
 
-ВАЖНО: подключается как exec:python3 run_claude_code.py, а НЕ file://
-(см. docs promptfoo, custom-script, "Structured provider responses") -
-Python worker pool promptfoo убивает file:// вызов на 300000ms независимо от
-config.timeoutMs (проверено на 0.122.0 и 0.123.0).
+IMPORTANT: hooked up as exec:python3 run_claude_code.py, NOT file://
+(see promptfoo docs, custom-script, "Structured provider responses") -
+promptfoo's Python worker pool kills a file:// call at 300000ms regardless
+of config.timeoutMs (confirmed on 0.122.0 and 0.123.0).
 
-Сравнение моделей делает САМ promptfoo: несколько записей в providers: с
-разными label/config, все указывают на этот же скрипт (exec: одинаковый),
-promptfoo сам гоняет весь матрикс и сводит его в свою табличку. Никакой
-внешней оркестрации/циклов вокруг promptfoo не требуется - см. пример в
-promptfooconfig.yaml.
+promptfoo ITSELF compares the models: multiple entries under providers: with
+different label/config, all pointing at this same script (exec: identical),
+and promptfoo runs the whole matrix and folds it into its own table. No
+external orchestration/loops around promptfoo are needed - see the example
+in promptfooconfig.yaml.
 
-Модель и лимиты берутся из per-provider config (argv[2], который promptfoo
-передаёт скрипту как JSON - см. custom-script docs, "options"), с фолбэком
-на переменные окружения для ручных смоук-тестов из терминала.
+Model and limits come from the per-provider config (argv[2], which promptfoo
+passes to the script as JSON - see custom-script docs, "options"), with a
+fallback to environment variables for manual smoke tests from the terminal.
 
-Пишет в logs/ (плоско, без подкаталогов на модель/прогон - разбивка по
-модели делается на этапе отчёта, по полю metadata.label в каждой записи):
-  - logs/metrics.jsonl              - машиночитаемый журнал, 1 строка на вызов;
-  - logs/claude_code_execution.log  - человекочитаемая выжимка;
-  - logs/transcripts/<run_id>.jsonl - КАЖДОЕ событие Claude Code verbatim,
-    один файл на вызов (run_id уникален, так что разные вызовы не путаются
-    даже в общем логе).
+Writes to logs/ (flat, no per-model/per-run subdirectories - the breakdown
+by model happens at the report stage, via the metadata.label field in each
+record):
+  - logs/metrics.jsonl              - machine-readable log, 1 line per call;
+  - logs/claude_code_execution.log  - human-readable digest;
+  - logs/transcripts/<run_id>.jsonl - EVERY Claude Code event verbatim,
+    one file per call (run_id is unique, so different calls don't get mixed
+    up even in the shared log).
 
-Проверено на реальном transcript.jsonl - формат событий и имена полей ниже
-подтверждены, а не предположены:
-  - result.total_cost_usd - агрегированная стоимость по ВСЕМ моделям сессии
+Verified against a real transcript.jsonl - the event format and field names
+below are confirmed, not assumed:
+  - result.total_cost_usd - aggregated cost across ALL models in the session
   - result.usage.{input_tokens,cache_creation_input_tokens,
-    cache_read_input_tokens,output_tokens} - агрегированные суммы по всей
-    сессии (per-message usage у отдельных "assistant"-событий занижены -
-    для итога использовать только result.usage)
-  - result.modelUsage - разбивка по каждой реально вызванной модели
+    cache_read_input_tokens,output_tokens} - aggregated totals for the whole
+    session (per-message usage on individual "assistant" events is
+    understated - use only result.usage for the total)
+  - result.modelUsage - breakdown per model actually invoked
 """
 import sys
 import os
@@ -42,14 +43,14 @@ import uuid
 import subprocess
 import logging
 
-# --- Причины завершения прогона. Держать синхронным с bench_report.py. ---
-COMPLETED = "COMPLETED"              # агент сам решил, что закончил
-STEP_LIMIT = "STEP_LIMIT"            # упёрлись в --max-turns
-BUDGET_EXCEEDED = "BUDGET_EXCEEDED"  # упёрлись в --max-budget-usd
-PROVIDER_ERROR = "PROVIDER_ERROR"    # ненулевой exit / краш claude
-HARNESS_ERROR = "HARNESS_ERROR"      # баг в самом харнессе
+# --- Run termination reasons. Keep in sync with bench_report.py. ---
+COMPLETED = "COMPLETED"              # agent decided by itself that it's done
+STEP_LIMIT = "STEP_LIMIT"            # hit --max-turns
+BUDGET_EXCEEDED = "BUDGET_EXCEEDED"  # hit --max-budget-usd
+PROVIDER_ERROR = "PROVIDER_ERROR"    # non-zero exit / claude crash
+HARNESS_ERROR = "HARNESS_ERROR"      # bug in the harness itself
 
-# Claude Code режет прогон, не доходя ровно до потолка бюджета.
+# Claude Code cuts off the run slightly before hitting the exact budget ceiling.
 BUDGET_HIT_RATIO = 0.97
 
 os.makedirs("logs/transcripts", exist_ok=True)
@@ -67,7 +68,7 @@ def log(msg):
 
 
 def summarize_event(evt):
-    """Компактная человекочитаемая строка для одного события stream-json."""
+    """Compact, human-readable line for a single stream-json event."""
     etype = evt.get("type", "?")
     subtype = evt.get("subtype")
 
@@ -101,10 +102,11 @@ def summarize_event(evt):
 
 
 def classify_termination(result_evt, returncode, num_turns, cost, max_turns, max_budget_usd):
-    """Причина остановки агента. terminal_reason - подтверждённое реальными
-    данными поле Claude Code result-события (видено значение "max_turns" в
-    проде), авторитетнее subtype - используем его первым. subtype и
-    численный фолбэк - на случай, если terminal_reason отсутствует."""
+    """Reason the agent stopped. terminal_reason is a field on Claude Code's
+    result event confirmed by real data (value "max_turns" observed in
+    production) and is more authoritative than subtype - checked first.
+    subtype and the numeric fallback cover the case where terminal_reason
+    is absent."""
     if not result_evt:
         return PROVIDER_ERROR if returncode != 0 else HARNESS_ERROR
 
@@ -132,8 +134,9 @@ def classify_termination(result_evt, returncode, num_turns, cost, max_turns, max
 
 
 def _parse_options(argv):
-    """argv[2] - JSON с provider-конфигом из promptfooconfig.yaml (options.config).
-    Отсутствует при ручном запуске из терминала - тогда фолбэк на env."""
+    """argv[2] - JSON with the provider config from promptfooconfig.yaml
+    (options.config). Absent on manual runs from the terminal - falls back
+    to env in that case."""
     if len(argv) > 2 and argv[2]:
         try:
             return json.loads(argv[2]).get("config") or {}
@@ -146,8 +149,9 @@ def run_claude(prompt_text, cfg):
     model = cfg.get("model") or os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
     max_turns = int(cfg.get("maxTurns") or os.environ.get("CLAUDE_MAX_TURNS", "40"))
     max_budget_usd = float(cfg.get("maxBudgetUsd") or os.environ.get("CLAUDE_MAX_BUDGET_USD", "2.00"))
-    # label - ключ группировки в отчёте (несколько providers с одной моделью,
-    # но разными лимитами, тоже можно различить, задав его явно в config).
+    # label - the grouping key in the report (multiple providers with the
+    # same model but different limits can also be told apart by setting
+    # this explicitly in config).
     label = cfg.get("label") or model
 
     run_id = time.strftime("%H%M%S", time.gmtime()) + "-" + uuid.uuid4().hex[:6]
@@ -161,13 +165,14 @@ def run_claude(prompt_text, cfg):
         "--output-format", "stream-json",
         "--verbose",
         "--dangerously-skip-permissions",
-        # allowedTools убран: модель работает как чёрный ящик без ограничения
-        # тулсета, плюс похоже не действует вместе с --dangerously-skip-permissions
-        # (в реальном транскрипте система получила полный список тулов Claude
-        # Code, включая Task/Monitor/Cron*, несмотря на явное ограничение).
-        # Двойная страховка от зацикливания, независимая от модели: дёшево
-        # за токен не значит дёшево по факту, если модель начнёт перебирать
-        # одинаково неудачные фиксы по кругу.
+        # allowedTools removed: the model runs as a black box with no
+        # toolset restriction, and it seems to have no effect together with
+        # --dangerously-skip-permissions anyway (the real transcript showed
+        # the system got the full Claude Code tool list, including
+        # Task/Monitor/Cron*, despite the explicit restriction).
+        # Model-independent double safeguard against looping: cheap per
+        # token doesn't mean cheap overall if the model starts cycling
+        # through equally unsuccessful fixes.
         "--max-turns", str(max_turns),
         "--max-budget-usd", str(max_budget_usd),
     ]
@@ -178,7 +183,7 @@ def run_claude(prompt_text, cfg):
 
     transcript_path = f"logs/transcripts/{run_id}.jsonl"
     final_result_evt = {}
-    result_events = []  # ВСЕ type:result события этого вызова - см. ниже
+    result_events = []  # ALL type:result events for this call - see below
     warned_budget = False
     returncode = -1
     harness_error = None
@@ -207,17 +212,18 @@ def run_claude(prompt_text, cfg):
                         log(f"[WARN] budget 80% reached: ${spent:.4f} of ${max_budget_usd:.2f}")
 
                 if evt.get("type") == "result":
-                    # Claude Code может увести долгую bash-команду в background
-                    # (Task/Monitor/ScheduleWakeup из tool-листа) и "проснуться"
-                    # по уведомлению - это ОДНА сессия (общий session_id), но
-                    # НЕСКОЛЬКО type:result событий в потоке (подтверждено на
-                    # реальном транскрипте: 4 result-события, session_id общий,
-                    # num_turns у каждого 47/4/5/1 - это турны СВОЕГО эпизода,
-                    # не накопительная сумма). total_cost_usd и usage при этом
-                    # УЖЕ кумулятивны сами по себе (каждое следующее событие
-                    # содержит нарастающий итог) - для них последнее событие и
-                    # есть верный грандтотал. Поэтому здесь копим ТОЛЬКО то, что
-                    # само по себе не накопительное: num_turns и duration_ms.
+                    # Claude Code can push a long bash command to the
+                    # background (Task/Monitor/ScheduleWakeup from the tool
+                    # list) and "wake up" on a notification - that's ONE
+                    # session (shared session_id), but MULTIPLE type:result
+                    # events in the stream (confirmed on a real transcript:
+                    # 4 result events, shared session_id, num_turns of each
+                    # being 47/4/5/1 - those are turns of THEIR OWN episode,
+                    # not a running total). total_cost_usd and usage are
+                    # ALREADY cumulative on their own (each subsequent event
+                    # carries the running total) - for those, the last event
+                    # is the correct grand total. So here we only accumulate
+                    # what is NOT self-cumulative: num_turns and duration_ms.
                     result_events.append(evt)
                     final_result_evt = evt
             stderr_tail = proc.stderr.read()
@@ -234,9 +240,10 @@ def run_claude(prompt_text, cfg):
         log(f"stderr tail:\n{stderr_tail[-1000:]}")
 
     episodes = len(result_events)
-    # Сумма турнов/активного времени по всем эпизодам - иначе для сессии,
-    # которая заснула в ожидании фоновой сборки и проснулась коротким "всё
-    # уже готово" эпизодом, отчёт показал бы 1 турн вместо реальных десятков.
+    # Sum of turns/active time across all episodes - otherwise, for a
+    # session that fell asleep waiting on a background build and woke up
+    # with a short "all done" episode, the report would show 1 turn instead
+    # of the real dozens.
     num_turns = sum((e.get("num_turns") or 0) for e in result_events) or None
     active_duration_ms = sum((e.get("duration_ms") or 0) for e in result_events) or None
 
@@ -305,13 +312,13 @@ def run_claude(prompt_text, cfg):
 
 
 def _append_metrics_jsonl(output_data):
-    """Свой machine-readable журнал - независимый от того, что покажет
-    таблица promptfoo (exec:-провайдер всегда пихает весь stdout как сырую
-    строку в output, structured cost/tokenUsage оттуда promptfoo не
-    достаёт). Отчёт (bench_report.py) в первую очередь читает это же самое
-    JSON из results.json (там оно продублировано verbatim в response.output),
-    так что metrics.jsonl - это durability-копия на случай, если результат
-    promptfoo потеряется, а не обязательный вход отчёта."""
+    """Our own machine-readable log - independent of whatever promptfoo's
+    table shows (the exec: provider always shoves the whole stdout as a raw
+    string into output, promptfoo doesn't extract structured cost/tokenUsage
+    from it). The report (bench_report.py) primarily reads this same JSON
+    from results.json (it's duplicated there verbatim in response.output),
+    so metrics.jsonl is a durability copy in case promptfoo's result gets
+    lost, not a required input for the report."""
     record = dict(output_data)
     record["timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     try:
@@ -322,13 +329,14 @@ def _append_metrics_jsonl(output_data):
 
 
 if __name__ == "__main__":
-    # exec:-провайдер вызывает скрипт как: <script> <prompt> <options_json> <context_json>
-    # (см. custom-script docs). argv[1] - промпт, argv[2] - наш per-provider
-    # config (модель/лимиты), argv[3] - context (не используется).
+    # The exec: provider invokes the script as:
+    # <script> <prompt> <options_json> <context_json>
+    # (see custom-script docs). argv[1] is the prompt, argv[2] is our
+    # per-provider config (model/limits), argv[3] is context (unused).
     if len(sys.argv) > 1:
         prompt_text = sys.argv[1]
     else:
-        # Ручной режим для смоук-тестов из терминала:
+        # Manual mode for smoke tests from the terminal:
         #   echo 'list files' | python3 run_claude_code.py
         prompt_text = ""
         if not sys.stdin.isatty():
@@ -345,10 +353,11 @@ if __name__ == "__main__":
     cfg = _parse_options(sys.argv)
     result = run_claude(prompt_text, cfg)
     _append_metrics_jsonl(result)
-    # stdout - ТОЛЬКО этот JSON: promptfoo кладёт его целиком в response.output
-    # как строку, и bench_report.py парсит его обратно оттуда. Любой лишний
-    # print сюда ломает отчёт.
+    # stdout - ONLY this JSON: promptfoo puts it whole into response.output
+    # as a string, and bench_report.py parses it back out of there. Any
+    # extra print here breaks the report.
     print(json.dumps(result, ensure_ascii=False))
-    # Выходим ВСЕГДА нулём: ненулевой код заставит promptfoo пометить прогон
-    # как provider error и НЕ выполнить ассерт verify.py - потеряем вердикт.
+    # ALWAYS exit zero: a non-zero code makes promptfoo mark the run as a
+    # provider error and skip running verify.py's assertion - we'd lose the
+    # verdict.
     sys.exit(0)

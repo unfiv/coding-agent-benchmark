@@ -7,8 +7,8 @@ services:
     container_name: agent_benchmark_cpp
     volumes:
       - ../..:/app
-      # Пробрасываем базу promptfoo на хост, чтобы логи не сгорали при --rm
-      - ./logs/promptfoo_data:/home/node/.promptfoo   # было /root/.promptfoo, но перешли на безопасного пользователя node (в частности требование запуска claude cli)
+      # Forward promptfoo's database to the host so logs survive --rm
+      - ./logs/promptfoo_data:/home/node/.promptfoo   # was /root/.promptfoo, but switched to the unprivileged node user (required by claude cli)
     working_dir: /app/benchmarks/cpp-gtest-fix
     env_file:
       - ../../.env        
@@ -16,9 +16,11 @@ services:
       - PROMPTFOO_DISABLE_TELEMETRY=true
       - PROMPTFOO_PYTHON=python3
     entrypoint: []
-    # Идеология одной команды: авто-кэш -> молниеносный сброс диффа -> тест.
-    # Сравнение моделей делает сам promptfoo (несколько providers с разными
-    # label/config в promptfooconfig.yaml) - здесь ничего под это не меняется,
-    # только -o кладёт структурированный результат, и bench_report.py его
-    # сводит в консоль после таблицы promptfoo.
-    command: bash -c "rm -f logs/results.json; ./setup.sh && ( [ -d workspace/googletest ] && git -C workspace/googletest reset --hard HEAD && git -C workspace/googletest clean -fd -e build ) && promptfoo eval --no-cache -o logs/results.json; python3 bench_report.py logs/results.json"
+    # Single-command philosophy: auto-cache -> instant diff reset -> test.
+    # promptfoo itself compares the models (multiple providers with different
+    # label/config in promptfooconfig.yaml) - nothing here needs to change for
+    # that; -o just writes the structured result, and bench_report.py folds it
+    # into the console after promptfoo's table.
+    command: bash -c "rm -f logs/results.json; ./setup.sh && ( [ -d workspace/googletest ] && git -C workspace/googletest reset --hard HEAD && git -C workspace/googletest clean -fd -e build ) && promptfoo eval --no-cache -o logs/results.json; python3 bench_report.py logs/results.json"```
+
+benchmarks\cpp-gtest-fix\verify.py

@@ -5,7 +5,7 @@ set -e
 TARGET_DIR="./workspace/googletest"
 REPO_URL="https://github.com/google/googletest.git"
 LOCAL_FALLBACK="../../targets/cpp-gtest"
-COMMIT_SHA="283c17563fe7a1111cd7f581aa5d541e8baeff2f" # просто один из нормальных не старых комитов
+COMMIT_SHA="283c17563fe7a1111cd7f581aa5d541e8baeff2f" # One of the latest usual working commits, nothing special
 
 mkdir -p ./workspace
 

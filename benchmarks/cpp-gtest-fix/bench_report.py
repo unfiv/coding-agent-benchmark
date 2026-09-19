@@ -98,6 +98,8 @@ def load_rows(path):
             "num_turns": meta.get("num_turns"),
             "max_turns": meta.get("max_turns"),
             "max_budget_usd": meta.get("max_budget_usd"),
+            "wall_ms": meta.get("wall_ms") or 0,
+            "episodes": meta.get("episodes") or 1,
             "transcript": meta.get("transcript"),
         })
     return rows
@@ -116,6 +118,8 @@ def aggregate(rows):
         by_reason[reason] = by_reason.get(reason, 0) + 1
 
     turns = [r["num_turns"] for r in rows if isinstance(r["num_turns"], (int, float))]
+    wall_ms = [r["wall_ms"] for r in rows if isinstance(r["wall_ms"], (int, float)) and r["wall_ms"] > 0]
+    multi_episode = sum(1 for r in rows if (r.get("episodes") or 1) > 1)
     cost_total = sum(r["cost"] for r in rows)
     cost_solved = sum(r["cost"] for r in solved)
     tokens_solved = sum(r["tokens_total"] for r in solved)
@@ -132,6 +136,9 @@ def aggregate(rows):
         "tokens_per_solved": (tokens_solved / len(solved)) if solved else None,
         "turns_avg": (sum(turns) / len(turns)) if turns else 0.0,
         "turns_max": max(turns) if turns else 0,
+        "wall_avg_ms": (sum(wall_ms) / len(wall_ms)) if wall_ms else 0,
+        "wall_max_ms": max(wall_ms) if wall_ms else 0,
+        "multi_episode": multi_episode,
         "max_turns": rows[0]["max_turns"] if rows else None,
         "max_budget_usd": rows[0]["max_budget_usd"] if rows else None,
         "reliable": (len(limit_hit) / n if n else 0) <= INCOMPLETE_UNRELIABLE,
@@ -157,6 +164,11 @@ def exit_code(rows, min_solve_rate, solve_rate):
 
 def fmt_tokens(t):
     return "0" if not t else (f"{t/1000:.1f}k" if t < 1_000_000 else f"{t/1_000_000:.2f}M")
+
+
+def fmt_ms(ms):
+    s = (ms or 0) / 1000
+    return f"{int(s//60)}m {s%60:.0f}s" if s >= 60 else f"{s:.1f}s"
 
 
 def print_model_block(label, rows, agg):
@@ -191,6 +203,17 @@ def print_model_block(label, rows, agg):
     if agg["unsolved_by_reason"].get(STEP_LIMIT):
         turns_line += "   " + YELLOW("← hit")
     print(turns_line)
+
+    if agg["wall_avg_ms"]:
+        wall_line = f" wall        avg {fmt_ms(agg['wall_avg_ms'])}   max {fmt_ms(agg['wall_max_ms'])}"
+        if agg["multi_episode"]:
+            # Claude Code может уводить долгую bash-команду в background и
+            # "просыпаться" по уведомлению - несколько type:result в одном
+            # вызове. num_turns/wall тут суммированы по всем эпизодам, но
+            # если что-то в отчёте не сходится - смотреть transcript целиком,
+            # а не последний result внутри него.
+            wall_line += "   " + DIM(f"({agg['multi_episode']}/{agg['n']} runs had background wait/wakeup)")
+        print(wall_line)
 
     budget = f"${agg['max_budget_usd']}" if agg['max_budget_usd'] is not None else "n/a"
     cost_line = f" cost        ${agg['cost_total']:.4f} total   budget {budget}/run"

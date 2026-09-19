@@ -6,12 +6,13 @@ services:
     image: coding-agent-benchmark-cpp:latest
     container_name: agent_benchmark_cpp
     volumes:
-      - ../..:/app
+      - .:/app
+      - ../../targets/cpp-gtest:/targets/cpp-gtest:ro
       # Forward promptfoo's database to the host so logs survive --rm
       - ./logs/promptfoo_data:/home/node/.promptfoo   # was /root/.promptfoo, but switched to the unprivileged node user (required by claude cli)
-    working_dir: /app/benchmarks/cpp-gtest-fix
+    working_dir: /app
     env_file:
-      - ../../.env        
+      - ../../.env   # only injects env vars into the container; the .env file itself is never mounted/visible inside it
     environment:
       - PROMPTFOO_DISABLE_TELEMETRY=true
       - PROMPTFOO_PYTHON=python3
@@ -21,6 +22,4 @@ services:
     # label/config in promptfooconfig.yaml) - nothing here needs to change for
     # that; -o just writes the structured result, and bench_report.py folds it
     # into the console after promptfoo's table.
-    command: bash -c "rm -f logs/results.json; ./setup.sh && ( [ -d workspace/googletest ] && git -C workspace/googletest reset --hard HEAD && git -C workspace/googletest clean -fd -e build ) && promptfoo eval --no-cache -o logs/results.json; python3 bench_report.py logs/results.json"```
-
-benchmarks\cpp-gtest-fix\verify.py
+    command: bash -c "rm -f logs/results.json; ./setup.sh && ( [ -d workspace/googletest ] && git -C workspace/googletest reset --hard HEAD && git -C workspace/googletest clean -fd -e build ) && promptfoo eval --no-cache -o logs/results.json; python3 bench_report.py logs/results.json"

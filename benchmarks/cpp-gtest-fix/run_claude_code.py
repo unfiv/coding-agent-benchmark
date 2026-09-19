@@ -101,16 +101,21 @@ def summarize_event(evt):
 
 
 def classify_termination(result_evt, returncode, num_turns, cost, max_turns, max_budget_usd):
-    """Причина остановки агента. subtype 'success' и 'error_max_turns' видены
-    в реальных transcript'ах; вариант для бюджета ещё не попадался, поэтому
-    сначала subtype, потом численный фолбэк по turns/cost против лимитов.
-    Сырой subtype всегда кладём в metadata, чтобы мэппинг можно было
-    уточнить по факту, не переигрывая прогоны."""
+    """Причина остановки агента. terminal_reason - подтверждённое реальными
+    данными поле Claude Code result-события (видено значение "max_turns" в
+    проде), авторитетнее subtype - используем его первым. subtype и
+    численный фолбэк - на случай, если terminal_reason отсутствует."""
     if not result_evt:
         return PROVIDER_ERROR if returncode != 0 else HARNESS_ERROR
 
+    reason = (result_evt.get("terminal_reason") or "").lower()
+    if "max_turns" in reason or "turn" in reason:
+        return STEP_LIMIT
+    if "budget" in reason or "cost" in reason:
+        return BUDGET_EXCEEDED
+
     subtype = (result_evt.get("subtype") or "").lower()
-    if subtype == "success":
+    if subtype == "success" and not result_evt.get("is_error"):
         return COMPLETED
     if "budget" in subtype or "cost" in subtype:
         return BUDGET_EXCEEDED
@@ -173,6 +178,7 @@ def run_claude(prompt_text, cfg):
 
     transcript_path = f"logs/transcripts/{run_id}.jsonl"
     final_result_evt = {}
+    result_events = []  # ВСЕ type:result события этого вызова - см. ниже
     warned_budget = False
     returncode = -1
     harness_error = None
@@ -201,6 +207,18 @@ def run_claude(prompt_text, cfg):
                         log(f"[WARN] budget 80% reached: ${spent:.4f} of ${max_budget_usd:.2f}")
 
                 if evt.get("type") == "result":
+                    # Claude Code может увести долгую bash-команду в background
+                    # (Task/Monitor/ScheduleWakeup из tool-листа) и "проснуться"
+                    # по уведомлению - это ОДНА сессия (общий session_id), но
+                    # НЕСКОЛЬКО type:result событий в потоке (подтверждено на
+                    # реальном транскрипте: 4 result-события, session_id общий,
+                    # num_turns у каждого 47/4/5/1 - это турны СВОЕГО эпизода,
+                    # не накопительная сумма). total_cost_usd и usage при этом
+                    # УЖЕ кумулятивны сами по себе (каждое следующее событие
+                    # содержит нарастающий итог) - для них последнее событие и
+                    # есть верный грандтотал. Поэтому здесь копим ТОЛЬКО то, что
+                    # само по себе не накопительное: num_turns и duration_ms.
+                    result_events.append(evt)
                     final_result_evt = evt
             stderr_tail = proc.stderr.read()
             returncode = proc.wait()
@@ -215,6 +233,13 @@ def run_claude(prompt_text, cfg):
     if stderr_tail:
         log(f"stderr tail:\n{stderr_tail[-1000:]}")
 
+    episodes = len(result_events)
+    # Сумма турнов/активного времени по всем эпизодам - иначе для сессии,
+    # которая заснула в ожидании фоновой сборки и проснулась коротким "всё
+    # уже готово" эпизодом, отчёт показал бы 1 турн вместо реальных десятков.
+    num_turns = sum((e.get("num_turns") or 0) for e in result_events) or None
+    active_duration_ms = sum((e.get("duration_ms") or 0) for e in result_events) or None
+
     cost = final_result_evt.get("total_cost_usd", final_result_evt.get("cost_usd", 0.0)) or 0.0
     usage = final_result_evt.get("usage", {}) or {}
     fresh_input = usage.get("input_tokens", 0)
@@ -226,12 +251,15 @@ def run_claude(prompt_text, cfg):
     model_usage = final_result_evt.get("modelUsage", {}) or {}
     per_model_cost = {m: s.get("costUSD", 0.0) for m, s in model_usage.items()}
 
-    num_turns = final_result_evt.get("num_turns")
     if harness_error:
         termination = HARNESS_ERROR
     else:
         termination = classify_termination(final_result_evt, returncode, num_turns,
                                             cost, max_turns, max_budget_usd)
+
+    if episodes > 1:
+        log(f"[INFO] multi-episode session: {episodes} episodes "
+            f"(background wait/wakeup), num_turns summed to {num_turns}")
 
     if termination == STEP_LIMIT:
         log(f"[WARN] STEP LIMIT HIT: turns {num_turns}/{max_turns}")
@@ -254,12 +282,14 @@ def run_claude(prompt_text, cfg):
             "model": model,
             "termination": termination,
             "result_subtype": final_result_evt.get("subtype"),
+            "terminal_reason": final_result_evt.get("terminal_reason"),
             "harness_error": harness_error,
             "exit_code": returncode,
             "num_turns": num_turns,
             "max_turns": max_turns,
             "max_budget_usd": max_budget_usd,
-            "duration_ms": final_result_evt.get("duration_ms"),
+            "duration_ms": active_duration_ms,
+            "episodes": episodes,
             "wall_ms": int((time.time() - started) * 1000),
             "cache_write_tokens": cache_write,
             "cache_read_tokens": cache_read,

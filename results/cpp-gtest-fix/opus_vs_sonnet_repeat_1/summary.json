@@ -1,0 +1,42 @@
+{
+  "totals": {
+    "n": 2,
+    "solved": 2,
+    "solve_rate": 1.0
+  },
+  "models": {
+    "claude-opus-5": {
+      "n": 1,
+      "solved": 1,
+      "solve_rate": 1.0,
+      "limit_hit": 0,
+      "errors": 0,
+      "unsolved_by_reason": {},
+      "cost_total": 1.469562,
+      "cost_per_solved": 1.469562,
+      "tokens_per_solved": 851510.0,
+      "turns_avg": 24.0,
+      "turns_max": 24,
+      "max_turns": 80,
+      "max_budget_usd": 2.0,
+      "reliable": true
+    },
+    "claude-sonnet-5": {
+      "n": 1,
+      "solved": 1,
+      "solve_rate": 1.0,
+      "limit_hit": 0,
+      "errors": 0,
+      "unsolved_by_reason": {},
+      "cost_total": 1.304123,
+      "cost_per_solved": 1.304123,
+      "tokens_per_solved": 102334.0,
+      "turns_avg": 1.0,
+      "turns_max": 1,
+      "max_turns": 80,
+      "max_budget_usd": 2.0,
+      "reliable": true
+    }
+  },
+  "exit_code": 0
+}

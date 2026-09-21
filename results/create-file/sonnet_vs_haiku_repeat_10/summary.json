@@ -1,0 +1,48 @@
+{
+  "totals": {
+    "n": 20,
+    "solved": 20,
+    "solve_rate": 1.0
+  },
+  "models": {
+    "claude-haiku-4-5": {
+      "n": 10,
+      "solved": 10,
+      "solve_rate": 1.0,
+      "limit_hit": 0,
+      "errors": 0,
+      "unsolved_by_reason": {},
+      "cost_total": 0.07724400000000001,
+      "cost_per_solved": 0.007724400000000001,
+      "tokens_per_solved": 43375.8,
+      "turns_avg": 2.1,
+      "turns_max": 3,
+      "wall_avg_ms": 5215.6,
+      "wall_max_ms": 7360,
+      "multi_episode": 0,
+      "max_turns": 10,
+      "max_budget_usd": 0.2,
+      "reliable": true
+    },
+    "claude-sonnet-5": {
+      "n": 10,
+      "solved": 10,
+      "solve_rate": 1.0,
+      "limit_hit": 0,
+      "errors": 0,
+      "unsolved_by_reason": {},
+      "cost_total": 0.165176,
+      "cost_per_solved": 0.0165176,
+      "tokens_per_solved": 57477.0,
+      "turns_avg": 2.1,
+      "turns_max": 3,
+      "wall_avg_ms": 6119.1,
+      "wall_max_ms": 7738,
+      "multi_episode": 0,
+      "max_turns": 10,
+      "max_budget_usd": 0.2,
+      "reliable": true
+    }
+  },
+  "exit_code": 0
+}

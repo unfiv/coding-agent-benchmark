@@ -60,7 +60,7 @@ promptfoo  ->  provider (run_claude_code.py)  ->  Claude Code CLI  ->  verify.py
                           logs/metrics.jsonl -> logs/summary.md, summary.json
 ```
 
-* **Orchestration.** [Promptfoo](https://www.promptfoo.dev/) runs the matrix of models and repeats.
+* **Orchestration.** [Promptfoo](https://github.com/promptfoo/promptfoo) runs the matrix of models and repeats.
 * **Thin launcher.** The provider starts the agent, enforces the limits and records everything. It does not restrict the agent: the harness is part of what is being measured.
 * **Success criterion.** Each benchmark defines its own check in `verify.py`. For the googletest task it rebuilds the library, runs an additional regression test for the bug, then runs the repository's `ctest` suite.
 

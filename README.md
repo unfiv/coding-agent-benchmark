@@ -69,6 +69,7 @@ promptfoo  ->  provider (run_claude_code.py)  ->  Claude Code CLI  ->  verify.py
 * **Image.** Node.js 22 (pinned by digest) with Promptfoo `0.123.0` and the Claude Code CLI `2.1.269`. The C++ benchmark adds `build-essential`, CMake and Ninja.
 * **User.** The agent runs as the unprivileged `node` user. The stand starts it with `--dangerously-skip-permissions` so it can work unattended, and Claude Code refuses that flag under root.
 * **Mounts.** The benchmark's own directory is bind-mounted read-write (`/app` in `cpp-gtest-fix`, `/work` in `create-file`). For `cpp-gtest-fix`, the `targets/cpp-gtest` directory is additionally bind-mounted as read-only to provide an offline fallback. API keys reach the container as environment variables; the `.env` file itself is not mounted.
+ℹ️ **Linux User Note:** The container runs as an unprivileged `node` user (UID 1000). To prevent Docker from creating the default log directories with `root` ownership, ensure you create the `logs` directory first if running manually (`mkdir -p benchmarks/<benchmark-name>/logs`).
 * **Target repository.** googletest is cloned into `workspace/` at a pinned commit on the first run (or copied from the bundled offline copy of the same commit) and reset to a clean state before each following run.
 * **Output.** Logs, transcripts and the Promptfoo database are written to `logs/` on the host, so they survive `--rm`.
 * **Network.** Not restricted: the agent can reach the Internet, as it can with its normal harness.

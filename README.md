@@ -15,7 +15,7 @@ The stand answers one question: **how much does it cost to solve this task with 
 * **Zero-config first run.** The smoke benchmark needs no API keys and no `.env`: clone, run one command, get `Results: 1 passed (100%)`.
 * **Whole-system measurement.** The agent runs with its own harness and its full toolset. The stand measures what that system costs, not a hand-picked slice of it.
 * **Reproducible environment.** Docker images pin the base image by digest and Promptfoo and the Claude Code CLI to exact versions; the target repository is pinned to a commit.
-* **Isolated benchmarks.** Every benchmark has its own `Dockerfile`, `compose.yaml` and checks. Only that benchmark's directory is mounted into the container, never the repository root or your `.env` file.
+* **Isolated benchmarks.** Every benchmark has its own `Dockerfile`, `compose.yaml` and checks. Only that benchmark's directory (plus a read-only offline copy of the target for the C++ benchmark) is mounted into the container, never the repository root or your `.env` file.
 * **Model comparison out of the box.** Several providers in one `promptfooconfig.yaml` run as a matrix, with repeats.
 * **Hard limits.** Max turns, budget in USD and a timeout per run. A run that hits a limit is classified (`STEP_LIMIT`, `BUDGET_EXCEEDED`) instead of being lost.
 * **Offline fallback.** If GitHub is unreachable, the C++ benchmark falls back to a bundled copy of the same pinned googletest commit (`targets/cpp-gtest`).
@@ -68,7 +68,7 @@ promptfoo  ->  provider (run_claude_code.py)  ->  Claude Code CLI  ->  verify.py
 
 * **Image.** Node.js 22 (pinned by digest) with Promptfoo `0.123.0` and the Claude Code CLI `2.1.269`. The C++ benchmark adds `build-essential`, CMake and Ninja.
 * **User.** The agent runs as the unprivileged `node` user. The stand starts it with `--dangerously-skip-permissions` so it can work unattended, and Claude Code refuses that flag under root.
-* **Mounts.** The benchmark's own directory is bind-mounted read-write (`/app` in `cpp-gtest-fix`, `/work` in `create-file`). API keys reach the container as environment variables; the `.env` file itself is not mounted.
+* **Mounts.** The benchmark's own directory is bind-mounted read-write (`/app` in `cpp-gtest-fix`, `/work` in `create-file`). For `cpp-gtest-fix`, the `targets/cpp-gtest` directory is additionally bind-mounted as read-only to provide an offline fallback. API keys reach the container as environment variables; the `.env` file itself is not mounted.
 * **Target repository.** googletest is cloned into `workspace/` at a pinned commit on the first run (or copied from the bundled offline copy of the same commit) and reset to a clean state before each following run.
 * **Output.** Logs, transcripts and the Promptfoo database are written to `logs/` on the host, so they survive `--rm`.
 * **Network.** Not restricted: the agent can reach the Internet, as it can with its normal harness.
@@ -168,4 +168,5 @@ docker compose -f benchmarks/<name>/compose.yaml down --rmi all --remove-orphans
 
 ## License
 
+Copyright © 2026 Vital Astrouski.
 Apache License 2.0, see [LICENSE](LICENSE). The bundled googletest copy in `targets/cpp-gtest` keeps its own BSD 3-Clause license (see `targets/cpp-gtest/LICENSE`).

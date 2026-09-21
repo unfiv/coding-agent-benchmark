@@ -1,0 +1,42 @@
+# ==============================================================================
+# Git Attributes Configuration for coding-agent-benchmark
+# Ensures cross-platform line ending compatibility (LF) for Docker and LLMs.
+# ==============================================================================
+
+# Set default behavior to automatically normalize all text files to LF on check-in
+* text=auto eol=lf
+
+# ------------------------------------------------------------------------------
+# Shell Scripts & Automation
+# Docker containers (Linux) will crash with syntax errors if these have CRLF (\r)
+# ------------------------------------------------------------------------------
+*.sh text eol=lf
+
+# ------------------------------------------------------------------------------
+# Docker & Infrastructure Configurations
+# Prevents parser issues inside isolated container environments
+# ------------------------------------------------------------------------------
+Dockerfile text eol=lf
+*compose.yaml text eol=lf
+*compose.yml text eol=lf
+
+# ------------------------------------------------------------------------------
+# Promptfoo & Evaluation Framework Configs
+# Guarantees that evaluation matrices and settings remain identical across OS
+# ------------------------------------------------------------------------------
+promptfooconfig.yaml text eol=lf
+promptfooconfig.yml text eol=lf
+
+# ------------------------------------------------------------------------------
+# LLM Prompts, Framework Data, and Metrics
+# Crucial: CRLF changes tokenization, weights, and promptfoo caching behavior
+# ------------------------------------------------------------------------------
+*.txt text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+*.md text eol=lf
+
+# ------------------------------------------------------------------------------
+# Environment Variables Templates
+# ------------------------------------------------------------------------------
+.env.example text eol=lf

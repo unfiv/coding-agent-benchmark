@@ -3,8 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: coding-agent-benchmark-smoke:latest
-    container_name: agent_benchmark_smoke
+    image: coding-agent-benchmark-create-file:latest
+    container_name: agent_benchmark_create_file
     volumes:
       # Наружу смонтирован ТОЛЬКО каталог этого теста, а не весь репозиторий:
       # агент запускается с --dangerously-skip-permissions и может стереть

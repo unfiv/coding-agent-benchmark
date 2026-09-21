@@ -59,7 +59,7 @@ def load_rows(path):
     if isinstance(node, dict):
         node = node.get("results", [])
     if not isinstance(node, list):
-        raise ValueError(f"неожиданная форма results.json: {type(node)}")
+        raise ValueError(f"unexpected results.json shape: {type(node)}")
 
     rows = []
     for pf in node:
@@ -225,7 +225,7 @@ def print_model_block(label, rows, agg):
     if agg["cost_per_solved"] is not None:
         print(f" per solved  ${agg['cost_per_solved']:.4f}   {fmt_tokens(agg['tokens_per_solved'])} tokens")
     else:
-        print(" per solved  " + DIM("n/a — ни одной решённой задачи"))
+        print(" per solved  " + DIM("n/a — no task solved"))
     print("═" * W)
 
 
@@ -234,7 +234,7 @@ def print_failures(rows):
     if not bad:
         return
     print()
-    print(" НЕ РЕШЕНО:")
+    print(" UNSOLVED:")
     for r in bad:
         reason = TASK_FAILED if r["termination"] == COMPLETED else r["termination"]
         head = f"  · [{r['label']}] {reason}"
@@ -258,7 +258,7 @@ def print_comparison(per_label, baseline):
 
     print()
     print("═" * W)
-    print(" СРАВНЕНИЕ ПРОВАЙДЕРОВ")
+    print(" PROVIDER COMPARISON")
     print("─" * W)
     print(f" {'provider':<22}{'solved':>8}{'limit':>7}{'$/solved':>11}{'tok/solved':>12}{'Δ':>6}")
     print("─" * W)
@@ -279,14 +279,14 @@ def print_comparison(per_label, baseline):
         else:
             line += "      "
         if not a["reliable"]:
-            line += YELLOW("  ← ненадёжно")
+            line += YELLOW("  ← unreliable")
         print(line)
     print("─" * W)
-    print(DIM(" * baseline. $/solved и tok/solved нормированы на решённые задачи -"))
-    print(DIM(" иначе модель, которая рано сдаётся, выглядела бы самой дешёвой."))
+    print(DIM(" * baseline. $/solved and tok/solved are normalized per solved task -"))
+    print(DIM(" otherwise a model that gives up early would look the cheapest."))
     if any(a["n"] < 5 for a in per_label.values()):
-        print(YELLOW(" n < 5, репитов нет — разброс между прогонами перекрывает разницу"))
-        print(YELLOW(" между моделями. Это анекдот, не замер."))
+        print(YELLOW(" n < 5, no repeats — run-to-run spread swamps the difference"))
+        print(YELLOW(" between models. This is an anecdote, not a measurement."))
     print("═" * W)
 
 
@@ -300,7 +300,7 @@ def render_markdown(rows, per_label, code):
         out.append(f"| {m} | {a['solved']}/{a['n']} | {a['limit_hit']} | {cps} | {tps} |")
     bad = [r for r in rows if not r["solved"]]
     if bad:
-        out += ["", "## Не решено", ""]
+        out += ["", "## Unsolved", ""]
         for r in bad:
             reason = TASK_FAILED if r["termination"] == COMPLETED else r["termination"]
             out.append(f"- **{r['label']}** — {reason}, turns {r['num_turns']}/{r['max_turns']}, ${r['cost']:.4f}")
@@ -318,12 +318,12 @@ def main():
     args = ap.parse_args()
 
     if not os.path.exists(args.results_path):
-        print(RED(f"Нет файла: {args.results_path}"), file=sys.stderr)
+        print(RED(f"File not found: {args.results_path}"), file=sys.stderr)
         return EXIT_HARNESS
 
     rows = load_rows(args.results_path)
     if not rows:
-        print(RED("promptfoo не вернул ни одного результата"), file=sys.stderr)
+        print(RED("promptfoo returned no results"), file=sys.stderr)
         return EXIT_HARNESS
 
     print()

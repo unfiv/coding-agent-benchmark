@@ -1,14 +1,14 @@
 """
-Ассерт для promptfoo (type: python) - независимая проверка фикса агента.
+Promptfoo assertion (type: python) - independent verification of the agent's fix.
 
-Почему Python, а не inline JS: promptfoo выполняет `type: javascript`
-через eval() в контексте без доступа к Node builtins - `require('child_process')`
-там бросает ReferenceError ДО входа в try/catch, то есть проверка не
-выполняется вообще, а eval молча падает как "ошибка ассерта". Подтверждено
-разбором grading_result в promptfoo.db за прогон eval-E6p-2026-09-13T08:29:20:
+Why Python and not inline JS: promptfoo runs `type: javascript` through
+eval() in a context without access to Node builtins - `require('child_process')`
+there throws a ReferenceError BEFORE entering try/catch, so the check is not
+executed at all, and eval silently fails as an "assertion error". Confirmed by
+inspecting grading_result in promptfoo.db for the run eval-E6p-2026-09-13T08:29:20:
 "Custom function threw error: require is not defined".
 
-Функция по умолчанию, которую ищет promptfoo во внешнем .py файле - get_assert.
+The default function promptfoo looks for in an external .py file is get_assert.
 """
 import subprocess
 

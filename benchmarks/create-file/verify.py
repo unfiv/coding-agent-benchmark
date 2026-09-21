@@ -1,14 +1,14 @@
 """
-Ассерт для promptfoo (type: python) - смоук-тест харнесса.
+Promptfoo assertion (type: python) - smoke test of the harness.
 
-Задача тривиальна: агент должен создать workspace/hello.txt с одной строкой
-OK-42. Никакой сборки: проверка - прямое чтение файла.
+The task is trivial: the agent must create workspace/hello.txt with a single
+line, OK-42. No build: the check is a direct read of the file.
 
-Файл ВСЕГДА удаляется в finally: при repeat: 10 прогоны идут подряд в одной
-директории, и без очистки следующий прогон мог бы "пройти" на артефакте
-предыдущего, даже если агент ничего не сделал.
+The file is ALWAYS deleted in finally: with repeat: 10 the runs go back to back in
+the same directory, and without cleanup the next run could "pass" on the
+previous run's artifact even if the agent did nothing.
 
-Функция по умолчанию, которую ищет promptfoo во внешнем .py файле - get_assert.
+The default function promptfoo looks for in an external .py file is get_assert.
 """
 from pathlib import Path
 

@@ -9,7 +9,7 @@ COMMIT_SHA="283c17563fe7a1111cd7f581aa5d541e8baeff2f" # One of the latest usual 
 
 mkdir -p ./workspace
 
-# Initialize target repository (Fetch from GitHub or fallback to local copy)
+# Initialize target repository (fetch from GitHub at the pinned commit, or fall back to the offline copy)
 if [ ! -d "$TARGET_DIR" ]; then
     echo "Initializing GoogleTest target repository..."
     if git clone $REPO_URL $TARGET_DIR 2>/dev/null; then

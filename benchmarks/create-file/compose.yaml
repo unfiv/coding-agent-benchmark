@@ -6,12 +6,12 @@ services:
     image: coding-agent-benchmark-create-file:latest
     container_name: agent_benchmark_create_file
     volumes:
-      # Наружу смонтирован ТОЛЬКО каталог этого теста, а не весь репозиторий:
-      # агент запускается с --dangerously-skip-permissions и может стереть
-      # или переписать всё, что видит. Корень репо (.git, .env, соседние
-      # тесты, незакоммиченная работа) в контейнер не попадает.
+      # ONLY this benchmark's directory is mounted, not the whole repository:
+      # the agent runs with --dangerously-skip-permissions and can delete or
+      # overwrite everything it can see. The repo root (.git, .env, sibling
+      # benchmarks, uncommitted work) never reaches the container.
       - .:/work
-      # Пробрасываем базу promptfoo на хост, чтобы логи не сгорали при --rm
+      # Forward promptfoo's database to the host so logs survive --rm
       - ./logs/promptfoo_data:/home/node/.promptfoo
     working_dir: /work
     env_file:
@@ -20,10 +20,10 @@ services:
       - PROMPTFOO_DISABLE_TELEMETRY=true
       - PROMPTFOO_PYTHON=python3
     entrypoint: []
-    # Сборки нет, setup.sh не нужен. Перед стартом чистим workspace и старый
-    # results.json (иначе при падении eval отчёт показал бы чужой прогон).
-    # Между eval и отчётом стоит ";", а не "&&": promptfoo, насколько я знаю,
-    # выходит с кодом 100, если хоть один ассерт не прошёл, и с "&&" отчёт
-    # не запустился бы именно тогда, когда он нужнее всего. Код возврата
-    # контейнера - это код bench_report.py.
+    # There is no build step, so no setup.sh. Before starting, clean the workspace
+    # and the old results.json (otherwise, if eval crashes, the report would show
+    # someone else's run). Between eval and the report there is ";" rather than
+    # "&&": as far as I know, promptfoo exits with code 100 if at least one
+    # assertion fails, and with "&&" the report would not run exactly when it is
+    # needed most. The container's exit code is the exit code of bench_report.py.
     command: bash -c "mkdir -p workspace logs && rm -f workspace/hello.txt logs/results.json && promptfoo eval --no-cache -o logs/results.json; python3 bench_report.py logs/results.json"

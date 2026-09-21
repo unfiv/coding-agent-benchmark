@@ -1,9 +1,9 @@
 prompts:
   - file://prompt.txt
 
-# Тулсет НЕ ограничиваем - модель работает как чёрный ящик, так же как в
-# тяжёлом тесте cpp-gtest-fix. label дублируем в config: именно оттуда его
-# читает run_claude_code.py (он попадает в metadata.label для отчёта).
+# The toolset is NOT restricted - the model works as a black box, same as in the
+# heavy cpp-gtest-fix test. The label is duplicated in config: that is where
+# run_claude_code.py reads it from (it ends up in metadata.label for the report).
 providers:
   - id: exec:python3 run_claude_code.py
     label: claude-sonnet-5
@@ -12,8 +12,8 @@ providers:
       model: claude-sonnet-5
       maxTurns: 10
       maxBudgetUsd: 0.20
-  # Второй провайдер - просто ещё одна запись. Haiku взят как самый дешёвый;
-  # для сравнения с тяжёлым тестом можно вернуть claude-opus-5.
+  # The second provider is just another entry. Haiku is used as the cheapest;
+  # for comparison with the heavy test, claude-opus-5 can be put back.
   - id: exec:python3 run_claude_code.py
     label: claude-haiku-4-5
     config:

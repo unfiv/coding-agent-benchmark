@@ -141,7 +141,7 @@ def _parse_options(argv):
         try:
             return json.loads(argv[2]).get("config") or {}
         except json.JSONDecodeError:
-            log(f"[warn] argv[2] не распарсился как JSON: {argv[2][:200]}")
+            log(f"[warn] argv[2] did not parse as JSON: {argv[2][:200]}")
     return {}
 
 
@@ -231,7 +231,7 @@ def run_claude(prompt_text, cfg):
     except FileNotFoundError as e:
         harness_error = f"claude CLI not found: {e}"
         log(f"[ERROR] {harness_error}")
-    except Exception as e:  # noqa: BLE001 - харнесс не должен падать молча
+    except Exception as e:  # noqa: BLE001 - the harness must not fail silently
         harness_error = f"{type(e).__name__}: {e}"
         log(f"[ERROR] harness failure: {harness_error}")
 
